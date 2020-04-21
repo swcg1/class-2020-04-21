@@ -32,7 +32,20 @@ cces <- read_rds("cces_initial.rds")
 
 2) Are there more Republicans or Democrats who responded?
 
+```{r scene 1}
+summary(cces)
 
+cces %>%
+  arrange(desc(age)) %>%
+  slice(1) %>%
+  pull(age)
+
+cces %>%
+  filter(gender == "Female") %>%
+  count(trump)
+
+glimpse(cces)
+```
 
 
 # Scene 2
@@ -43,6 +56,20 @@ cces <- read_rds("cces_initial.rds")
 
 2) What is the expected vote from Dom - who is Male, 37, holds a 4-year degree, asian, makes 77k, moderate who leans Democrat? (Hint: use predict())
 
+```{r scene 2}
+logistic_mod <- logistic_reg() %>%
+  set_engine("glm")
+
+logistic_fit <- fit(logistic_mod,
+                    trump ~ gender + age + educ + race + income + party + ideology,
+                    data = cces) 
+
+logistic_fit %>%
+  tidy(conf.int = TRUE) %>%
+  select(term, estimate, conf.low, conf.high)
+
+```
+
 
 
 # Scene 3
@@ -51,7 +78,46 @@ cces <- read_rds("cces_initial.rds")
 
 1) Interpret the output of the CART model (Hint: set extra = "auto" in prp). Where would Dom fall in this decision tree and what is the predicted odd of him voting for Trump? 
 
+```{r scene 3}
+set.seed(1005)
+
+tree_mod <- decision_tree() %>%
+  set_engine("rpart",
+             model = TRUE) %>%
+  set_mode("classification")
+
+trump_tree <- fit(tree_mod,
+                trump ~ gender + age + educ + race + income + party + ideology,
+                data = cces)
+
+trump_tree$fit %>%
+  prp(extra = "auto", varlen = 0, faclen = 0)
+
+trump_tree
+```
+
+
 2) Looking at the randomForest model, what does the OOB error tell us? Interpret the first row, second column of the confusion matrix, what does that 920 represent? How does 920 relate to the class.error of 0.078?
+
+```{r}
+set.seed(1005)
+
+forest_mod <- rand_forest(trees = 50, mtry = 7) %>%
+  set_engine("randomForest") %>%
+  set_mode("classification")
+
+trump_forest <- fit(forest_mod, 
+                   trump ~ gender + age + educ + race + income + party + ideology, 
+                   data = cces)
+
+trump_forest
+
+tibble(`Error rate` = trump_forest$fit$err.rate[, "OOB"],
+       Trees = 1:50) %>%
+  ggplot(aes(x = Trees, y = `Error rate`)) +
+  geom_line() +
+  theme_classic()
+```
 
 
 
@@ -62,5 +128,26 @@ cces <- read_rds("cces_initial.rds")
 
 1) Compare the accuracy of our three models, use bind_rows() to put the three in a nice tibble. Which model appears to be the best?
 
+```{r scene 4}
+
+tree <- predict(trump_tree, new_data = cces) %>%
+  bind_cols(cces) %>%
+  accuracy(truth = trump, estimate = .pred_class)
+
+log <- predict(logistic_fit, new_data = cces) %>%
+  bind_cols(cces) %>%
+  accuracy(truth = trump, estimate = .pred_class)
+
+forest <- predict(trump_forest, new_data = cces) %>%
+  bind_cols(cces) %>%
+  accuracy(truth = trump, estimate = .pred_class)
+
+bind_rows(tree, log, forest)
+
+```
+
+
 2) So the randomforest model appears to be the best model, how can we test that this is true?
+
+
 
